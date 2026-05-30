@@ -2,66 +2,154 @@ import streamlit as st
 import os
 from dotenv import load_dotenv
 from groq import Groq
+import time
+from datetime import datetime
 
 # ---------------- SETUP ----------------
-st.set_page_config(page_title="AI Agent", layout="wide")
+st.set_page_config(page_title="AI Agent Pro", layout="wide")
 load_dotenv()
 
 client = Groq(api_key=st.secrets["GROQ_API_KEY"])
 
-# ---------------- SIDEBAR ----------------
-st.sidebar.title("⚙️ Agent Tools")
-
-web_search = st.sidebar.toggle("🌐 Web Search", value=True)
-notes = st.sidebar.toggle("📝 Save Notes", value=True)
-email = st.sidebar.toggle("📧 Send Email", value=False)
-functions = st.sidebar.toggle("🧮 Functions", value=True)
-
-st.sidebar.divider()
-st.sidebar.write("📊 Status")
-st.sidebar.write("Queries run: 0")
-st.sidebar.write("Notes saved: 0")
-st.sidebar.write("Emails sent: 0")
-
-# ---------------- MAIN UI ----------------
-st.title("🤖 AI Agent Chatbot")
-
-# session memory
+# ---------------- SESSION STATE ----------------
 if "messages" not in st.session_state:
     st.session_state.messages = []
 
-# show chat history
-for msg in st.session_state.messages:
-    with st.chat_message(msg["role"]):
-        st.write(msg["content"])
+if "logs" not in st.session_state:
+    st.session_state.logs = []
 
-# input box
-user_input = st.chat_input("Ask something...")
+if "stats" not in st.session_state:
+    st.session_state.stats = {
+        "queries": 0,
+        "notes": 0,
+        "emails": 0
+    }
 
-# ---------------- CHAT LOGIC ----------------
+# ---------------- SIDEBAR ----------------
+st.sidebar.title("⚙️ Agent Control Panel")
+
+web_search = st.sidebar.toggle("🌐 Web Search", True)
+notes = st.sidebar.toggle("📝 Save Notes", True)
+email = st.sidebar.toggle("📧 Send Email", False)
+functions = st.sidebar.toggle("🧮 Functions", True)
+
+st.sidebar.divider()
+
+col1, col2 = st.sidebar.columns(2)
+col1.metric("Queries", st.session_state.stats["queries"])
+col2.metric("Notes", st.session_state.stats["notes"])
+
+col3, col4 = st.sidebar.columns(2)
+col3.metric("Emails", st.session_state.stats["emails"])
+col4.metric("Messages", len(st.session_state.messages))
+
+# Clear chat
+if st.sidebar.button("🧹 Clear Chat"):
+    st.session_state.messages = []
+    st.session_state.logs = []
+    st.rerun()
+
+# Export chat
+def export_chat():
+    return "\n".join([f"{m['role']}: {m['content']}" for m in st.session_state.messages])
+
+st.sidebar.download_button(
+    "⬇️ Download Chat",
+    export_chat(),
+    file_name="chat_history.txt"
+)
+
+# ---------------- MAIN UI ----------------
+st.title("🤖 AI Agent Pro")
+
+st.caption("Multi-tool AI agent with memory, logs & actions")
+
+# ---------------- CHAT DISPLAY ----------------
+chat_container = st.container()
+
+with chat_container:
+    for msg in st.session_state.messages:
+        avatar = "🧑" if msg["role"] == "user" else "🤖"
+        with st.chat_message(msg["role"], avatar=avatar):
+            st.markdown(msg["content"])
+
+# ---------------- TOOL LOG PANEL ----------------
+st.divider()
+st.subheader("📊 Agent Activity Log")
+
+log_container = st.container()
+
+with log_container:
+    if st.session_state.logs:
+        for log in reversed(st.session_state.logs[-8:]):
+            st.write(f"🕒 {log}")
+    else:
+        st.info("No tool activity yet.")
+
+# ---------------- INPUT ----------------
+user_input = st.chat_input("Ask your AI agent...")
+
+# ---------------- AGENT LOGIC ----------------
 if user_input:
-    st.session_state.messages.append({"role": "user", "content": user_input})
 
-    with st.chat_message("user"):
+    # update stats
+    st.session_state.stats["queries"] += 1
+
+    st.session_state.messages.append({
+        "role": "user",
+        "content": user_input
+    })
+
+    with st.chat_message("user", avatar="🧑"):
         st.write(user_input)
 
-    try:
-        response = client.chat.completions.create(
-            model="llama-3.1-8b-instant",
-            messages=st.session_state.messages
-        )
+    # fake "thinking" animation
+    with st.chat_message("assistant", avatar="🤖"):
+        with st.spinner("Thinking..."):
+            time.sleep(0.6)
 
-        reply = response.choices[0].message.content
+        # simulate tool usage
+        tool_msg = None
 
-        st.session_state.messages.append({"role": "assistant", "content": reply})
+        if "email" in user_input.lower() and email:
+            tool_msg = "📧 Email tool triggered"
+            st.session_state.stats["emails"] += 1
 
-        with st.chat_message("assistant"):
-            st.write(reply)
+        elif "note" in user_input.lower() and notes:
+            tool_msg = "📝 Note saved"
+            st.session_state.stats["notes"] += 1
 
-    except Exception as e:
-        st.error(f"Error: {e}")
- 
-# ---------------- RIGHT PANEL ----------------
-st.divider()
-st.subheader("📊 Tool Log")
-st.info("Tool log is empty.")
+        elif "calculate" in user_input.lower() and functions:
+            tool_msg = "🧮 Function tool used"
+
+        if tool_msg:
+            st.session_state.logs.append(
+                f"{datetime.now().strftime('%H:%M:%S')} - {tool_msg}"
+            )
+
+        # Groq response
+        try:
+            response = client.chat.completions.create(
+                model="llama-3.1-8b-instant",
+                messages=st.session_state.messages
+            )
+
+            reply = response.choices[0].message.content
+
+            # typing effect
+            placeholder = st.empty()
+            typed_text = ""
+
+            for char in reply:
+                typed_text += char
+                time.sleep(0.01)
+                placeholder.markdown(typed_text)
+
+        except Exception as e:
+            reply = f"Error: {e}"
+            st.error(reply)
+
+    st.session_state.messages.append({
+        "role": "assistant",
+        "content": reply
+    })
