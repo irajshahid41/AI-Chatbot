@@ -47,7 +47,7 @@ if st.sidebar.button("🧹 Reset Workspace"):
     st.rerun()
 
 # ---------------- HEADER ----------------
-st.title("🤖 AI Agent Workspace")
+st.title("🤖 AI Agent")
 st.caption("A multi-mode interactive AI system (Chat + Agent + Commands)")
 
 # ---------------- Pinned Messages ----------------
@@ -166,7 +166,6 @@ if user_input:
 
 # ---------------- ACTIVITY CONSOLE ----------------
 st.divider()
-st.subheader("📊 Live Agent Console")
 
 with st.container():
     for log in reversed(st.session_state.logs[-10:]):
