@@ -6,7 +6,7 @@ import time
 from datetime import datetime
 
 # ---------------- SETUP ----------------
-st.set_page_config(page_title="AI Agent Pro", layout="wide")
+st.set_page_config(page_title="AI Agent Workspace", layout="wide")
 load_dotenv()
 
 client = Groq(api_key=st.secrets["GROQ_API_KEY"])
@@ -18,116 +18,129 @@ if "messages" not in st.session_state:
 if "logs" not in st.session_state:
     st.session_state.logs = []
 
+if "pinned" not in st.session_state:
+    st.session_state.pinned = []
+
 if "stats" not in st.session_state:
-    st.session_state.stats = {
-        "queries": 0,
-        "notes": 0,
-        "emails": 0
-    }
+    st.session_state.stats = {"queries": 0, "tools": 0}
 
 # ---------------- SIDEBAR ----------------
-st.sidebar.title("⚙️ Agent Control Panel")
+st.sidebar.title("⚙️ Agent Controls")
 
-web_search = st.sidebar.toggle("🌐 Web Search", True)
-notes = st.sidebar.toggle("📝 Save Notes", True)
-email = st.sidebar.toggle("📧 Send Email", False)
-functions = st.sidebar.toggle("🧮 Functions", True)
+mode = st.sidebar.radio("Mode", ["Chat", "Agent (Thinking Mode)", "Command Mode"])
+
+web_search = st.sidebar.toggle("🌐 Web Tool", True)
+notes_tool = st.sidebar.toggle("📝 Notes Tool", True)
+email_tool = st.sidebar.toggle("📧 Email Tool", False)
 
 st.sidebar.divider()
 
-col1, col2 = st.sidebar.columns(2)
-col1.metric("Queries", st.session_state.stats["queries"])
-col2.metric("Notes", st.session_state.stats["notes"])
+st.sidebar.metric("Queries", st.session_state.stats["queries"])
+st.sidebar.metric("Tools Used", st.session_state.stats["tools"])
+st.sidebar.metric("Pinned", len(st.session_state.pinned))
 
-col3, col4 = st.sidebar.columns(2)
-col3.metric("Emails", st.session_state.stats["emails"])
-col4.metric("Messages", len(st.session_state.messages))
-
-# Clear chat
-if st.sidebar.button("🧹 Clear Chat"):
+# Clear
+if st.sidebar.button("🧹 Reset Workspace"):
     st.session_state.messages = []
     st.session_state.logs = []
+    st.session_state.pinned = []
     st.rerun()
 
-# Export chat
-def export_chat():
-    return "\n".join([f"{m['role']}: {m['content']}" for m in st.session_state.messages])
+# ---------------- HEADER ----------------
+st.title("🤖 AI Agent Workspace")
+st.caption("A multi-mode interactive AI system (Chat + Agent + Commands)")
 
-st.sidebar.download_button(
-    "⬇️ Download Chat",
-    export_chat(),
-    file_name="chat_history.txt"
-)
-
-# ---------------- MAIN UI ----------------
-st.title("🤖 AI Agent Pro")
-
-st.caption("Multi-tool AI agent with memory, logs & actions")
+# ---------------- Pinned Messages ----------------
+with st.expander("📌 Pinned Context", expanded=False):
+    if st.session_state.pinned:
+        for p in st.session_state.pinned:
+            st.info(p)
+    else:
+        st.write("No pinned items")
 
 # ---------------- CHAT DISPLAY ----------------
-chat_container = st.container()
+for i, msg in enumerate(st.session_state.messages):
+    with st.chat_message(msg["role"]):
+        st.markdown(msg["content"])
 
-with chat_container:
-    for msg in st.session_state.messages:
-        avatar = "🧑" if msg["role"] == "user" else "🤖"
-        with st.chat_message(msg["role"], avatar=avatar):
-            st.markdown(msg["content"])
+        col1, col2 = st.columns([1, 10])
+        with col1:
+            if msg["role"] == "assistant":
+                if st.button("📌", key=f"pin_{i}"):
+                    st.session_state.pinned.append(msg["content"])
 
-# ---------------- TOOL LOG PANEL ----------------
+# ---------------- COMMAND BAR ----------------
 st.divider()
-st.subheader("📊 Agent Activity Log")
+command = st.text_input("⚡ Command Bar (try /clear, /export, /note, /mode)")
 
-log_container = st.container()
+if command:
+    if command == "/clear":
+        st.session_state.messages = []
+        st.session_state.logs = []
+        st.success("Workspace cleared")
+        st.rerun()
 
-with log_container:
-    if st.session_state.logs:
-        for log in reversed(st.session_state.logs[-8:]):
-            st.write(f"🕒 {log}")
-    else:
-        st.info("No tool activity yet.")
+    elif command == "/export":
+        st.download_button(
+            "Download Chat",
+            "\n".join([m["content"] for m in st.session_state.messages]),
+            file_name="chat.txt"
+        )
+
+    elif command.startswith("/note"):
+        note = command.replace("/note", "").strip()
+        st.session_state.pinned.append("📝 " + note)
+        st.success("Note saved!")
+
+    elif command.startswith("/mode"):
+        st.info("Switch mode from sidebar")
+
+# ---------------- AGENT THINKING VIEW ----------------
+def agent_thinking(query):
+    steps = [
+        "Analyzing input...",
+        "Checking tools availability...",
+        "Processing context...",
+        "Generating response..."
+    ]
+
+    for step in steps:
+        st.write("🧠 " + step)
+        time.sleep(0.3)
 
 # ---------------- INPUT ----------------
-user_input = st.chat_input("Ask your AI agent...")
+user_input = st.chat_input("Ask your AI Agent...")
 
-# ---------------- AGENT LOGIC ----------------
 if user_input:
-
-    # update stats
     st.session_state.stats["queries"] += 1
 
-    st.session_state.messages.append({
-        "role": "user",
-        "content": user_input
-    })
+    st.session_state.messages.append({"role": "user", "content": user_input})
 
-    with st.chat_message("user", avatar="🧑"):
+    with st.chat_message("user"):
         st.write(user_input)
 
-    # fake "thinking" animation
-    with st.chat_message("assistant", avatar="🤖"):
-        with st.spinner("Thinking..."):
-            time.sleep(0.6)
+    with st.chat_message("assistant"):
 
-        # simulate tool usage
-        tool_msg = None
+        if mode == "Agent (Thinking Mode)":
+            agent_thinking(user_input)
 
-        if "email" in user_input.lower() and email:
-            tool_msg = "📧 Email tool triggered"
-            st.session_state.stats["emails"] += 1
+        # tool simulation
+        tool_used = None
 
-        elif "note" in user_input.lower() and notes:
-            tool_msg = "📝 Note saved"
-            st.session_state.stats["notes"] += 1
+        if "note" in user_input.lower() and notes_tool:
+            tool_used = "📝 Notes tool activated"
+        elif "email" in user_input.lower() and email_tool:
+            tool_used = "📧 Email tool activated"
+        elif "search" in user_input.lower() and web_search:
+            tool_used = "🌐 Web tool activated"
 
-        elif "calculate" in user_input.lower() and functions:
-            tool_msg = "🧮 Function tool used"
-
-        if tool_msg:
+        if tool_used:
             st.session_state.logs.append(
-                f"{datetime.now().strftime('%H:%M:%S')} - {tool_msg}"
+                f"{datetime.now().strftime('%H:%M:%S')} - {tool_used}"
             )
+            st.session_state.stats["tools"] += 1
+            st.toast(tool_used)
 
-        # Groq response
         try:
             response = client.chat.completions.create(
                 model="llama-3.1-8b-instant",
@@ -136,20 +149,25 @@ if user_input:
 
             reply = response.choices[0].message.content
 
-            # typing effect
-            placeholder = st.empty()
-            typed_text = ""
+            # streaming effect
+            box = st.empty()
+            output = ""
 
-            for char in reply:
-                typed_text += char
-                time.sleep(0.01)
-                placeholder.markdown(typed_text)
+            for c in reply:
+                output += c
+                time.sleep(0.005)
+                box.markdown(output)
 
         except Exception as e:
             reply = f"Error: {e}"
             st.error(reply)
 
-    st.session_state.messages.append({
-        "role": "assistant",
-        "content": reply
-    })
+    st.session_state.messages.append({"role": "assistant", "content": reply})
+
+# ---------------- ACTIVITY CONSOLE ----------------
+st.divider()
+st.subheader("📊 Live Agent Console")
+
+with st.container():
+    for log in reversed(st.session_state.logs[-10:]):
+        st.code(log)
